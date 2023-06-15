@@ -26,6 +26,8 @@ simulation_engines = [
     "lammps-VU",
     "lammps-UD",
     "mcccs_lammps_foyer",
+    "hoomd-3.11",
+    "hoomd-4.0",
 ]
 md_engines = ["gromacs", "hoomd", "lammps-VU", "lammps-UD"]
 mc_engines = ["cassandra", "mcccs", "gomc", "mcccs_lammps_foyer"]

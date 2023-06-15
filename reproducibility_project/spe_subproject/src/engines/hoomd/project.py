@@ -8,10 +8,6 @@ import numpy as np
 from flow import FlowProject
 from flow.environment import DefaultSlurmEnvironment
 
-sys.path.append(
-    "/home/siepmann/singh891/software/hoomd-2023/hoomd-blue-mosdef38/build"
-)
-
 rigid_molecules = ["waterSPCE"]  # , "benzeneUA"]
 
 
@@ -22,32 +18,31 @@ class Project(FlowProject):
         super().__init__()
 
 
-class Fry(DefaultSlurmEnvironment):
-    """Subclass of DefaultSlurmEnvironment for BSU's Fry cluster."""
+class RahmanHOOMD(DefaultSlurmEnvironment):
+    """Subclass of DefaultSlurmEnvironment for VU's Rahman cluster."""
 
-    hostname_pattern = "fry.boisestate.edu"
-    template = "fry.sh"
+    template = "rahman_hoomd.sh"
 
     @classmethod
     def add_args(cls, parser):
         """Add command line arguments to the submit call."""
         parser.add_argument(
-            "--partition",
-            default="batch",
-            help="Specify the partition to submit to.",
+            "--walltime",
+            type=float,
+            default=96,
+            help="Walltime for this submission",
         )
-        parser.add_argument("--nodelist", help="Specify the node to submit to.")
 
 
 @Project.label
-@Project.pre(lambda j: j.sp.engine == "hoomd")
+@Project.pre(lambda j: "hoomd" in j.sp.engine)
 def OutputThermoData(job):
     """Check if the engine loaded the input files and wrote out thermo data."""
     return job.isfile("log-spe-raw.txt")
 
 
 @Project.label
-@Project.pre(lambda j: j.sp.engine == "hoomd")
+@Project.pre(lambda j: "hoomd" in j.sp.engine)
 def FinishedSPECalc(job):
     """Check if the log-spe.txt has been created."""
     return job.isfile("log-spe.txt")
@@ -57,14 +52,17 @@ def FinishedSPECalc(job):
 # echo "export MOSDEF_PYTHON=$(which python)" >> ~/.bashrc
 # with the mosdef-study38 conda env active
 @Project.operation  # .with_directives({"executable": "$MOSDEF_PYTHON", "ngpu": 1})
-@Project.pre(lambda j: j.sp.engine == "hoomd")
+@Project.pre(lambda j: "hoomd" in j.sp.engine)
 @Project.post(OutputThermoData)
 @flow.with_job
 def run_singleframe(job):
     """Create and run initial configurations of the system statepoint."""
+    # import git
+    import sys
+
     import foyer
 
-    # import git
+    print("All python paths: ", sys.path)
     import hoomd
     import hoomd.md
     import mbuild as mb
@@ -165,7 +163,7 @@ def run_singleframe(job):
             for f in forcefield
             if isinstance(f, hoomd.md.bond.Harmonic)
             or isinstance(f, hoomd.md.angle.Harmonic)
-            or isinstance(f, hoomd.md.dihedral.Harmonic)
+            or isinstance(f, hoomd.md.dihedral.Periodic)
             or isinstance(f, hoomd.md.dihedral.OPLS)
         ]
         for f in remove:
@@ -236,8 +234,8 @@ def run_singleframe(job):
             "constituent_types": c_types,
             "positions": c_pos,
             "orientations": c_orient,
-            "charges": c_charge,
-            "diameters": c_diam,
+            # "charges": c_charge,
+            # "diameters": c_diam,
         }
 
         for force in forcefield:
@@ -266,7 +264,9 @@ def run_singleframe(job):
 
     tau = 1000 * dt
 
-    integrator_method = hoomd.md.methods.NVT(filter=_all, kT=kT, tau=tau)
+    integrator_method = hoomd.md.methods.ConstantVolume(
+        filter=_all, thermostat=hoomd.md.methods.thermostats.Bussi(kT=kT)
+    )
 
     integrator.methods = [integrator_method]
     sim.operations.integrator = integrator
@@ -298,11 +298,10 @@ def run_singleframe(job):
 
 
 @Project.operation  # .with_directives({"executable": "$MOSDEF_PYTHON", "ngpu": 1})
-@Project.pre(lambda j: j.sp.engine == "hoomd")
+@Project.pre(lambda j: "hoomd" in j.sp.engine)
 @Project.pre(OutputThermoData)
 @Project.post(FinishedSPECalc)
 @flow.with_job
-@flow.cmd
 def FormatTextFile(job):
     """Convert simulation engine output to log-spe.txt for data comparisons.
 
@@ -365,6 +364,18 @@ def FormatTextFile(job):
         f.write(" ".join([f"{i:.15g}" for i in new_data_dict.values()]))
 
     print("Finished", flush=True)
+
+
+@Project.pre(lambda j: "hoomd" in j.sp.engine)
+@Project.pre(FinishedSPECalc)
+@Project.operation  # .with_directives({"executable": "$MOSDEF_PYTHON", "ngpu": 1})
+@flow.with_job
+def PrintJobEnergy(job):
+    """Print out hoomd single point energies for comparison."""
+    logfile = job.fn("log-spe.txt")
+    data = np.genfromtxt(logfile, dtype=float, delimiter=" ", skip_header=1)
+    data = np.array(data)
+    print(job.sp.molecule, job.sp.engine, data[0], "\n\n")
 
 
 if __name__ == "__main__":

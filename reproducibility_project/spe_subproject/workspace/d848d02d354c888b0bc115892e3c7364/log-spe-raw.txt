@@ -1,0 +1,2 @@
+pair_LJ pair_LJ_tail pair_Ewald pppm_Coulomb special_pair_LJ special_pair_Coulomb bond_Harmonic angle_Harmonic dihedral_OPLS potential_energy
+19363.9453125 -417.875762939453 2307.3408203125 16060.7392578125 44.3211555480957 -14791.6669921875 6.61927042528987e-05 7233.2783203125 1192.630859375 31410.59375
