@@ -158,7 +158,7 @@ if __name__ == "__main__":
     if not os.path.isdir("csvs"):
         os.mkdir("csvs")
 
-    summaryDF = pd.DataFrame(columns=["engine", "molecule", "potential_energy"])
+    summaryDF = pd.DataFrame(columns=["engine", "molecule", "potential_energy", "tail_energy"])
 
     for molecule in spe_data:
         print("Saving", molecule)
@@ -169,6 +169,7 @@ if __name__ == "__main__":
                 engine,
                 molecule,
                 spe_data[molecule][engine]["potential_energy"],
+                spe_data[molecule][engine]["tail_energy"],
             ]
 
     reDF = summaryDF.pivot(
@@ -176,4 +177,10 @@ if __name__ == "__main__":
     ).rename_axis(index=None, columns=None)
     re_func = lambda x: (x - x.mean()) / x.mean() * 100000
     reDF = reDF.transform(re_func)
-    reDF.to_csv(f"csvs/relative_error_in_spe.csv")
+    reDF.to_csv(f"csvs/relative_potential_error_in_spe.csv")
+    reDF = summaryDF.pivot(
+        index="engine", columns="molecule", values="tail_energy"
+    ).rename_axis(index=None, columns=None)
+    re_func = lambda x: (x - x.mean()) / x.mean() * 100000
+    reDF = reDF.transform(re_func)
+    reDF.to_csv(f"csvs/relative_tail_error_in_spe.csv")
